@@ -18,10 +18,6 @@ logger_handler.setFormatter(logging.Formatter('%(asctime)s  %(levelname)s  %(mes
 logger.addHandler(logger_handler)
 
 
-POTA_ACTIVATOR_URL = 'https://api.pota.app/spot/activator'
-POTA_ACTIVATOR_URL_TIMEOUT = 5 # seconds
-
-
 @dataclasses.dataclass
 class WsjtxUdpMessageDecode:
     id: str = ""
@@ -35,8 +31,10 @@ class WsjtxUdpMessageDecode:
     is_low_confidence: bool = False
     is_off_air: bool = False
 
+
 class WsjtxUdpMessageParserException(Exception):
     pass
+
 
 class WsjtxUdpMessageParser:
     def __init__(self, data: bytes):
@@ -99,11 +97,14 @@ class WsjtxUdpMessageParser:
             raise WsjtxUdpMessageParserException(f"Unable to parse valid message: {e}")
 
 
-class Notifications:
-    def __init__(self):
-        self.time_between_notifications_seconds: int = 180
-        self.audio_filename = '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'
+class UserNotifications:
+    def __init__(self, time_between_notifications_seconds: int = 180):
+        self._time_between_notifications_seconds = time_between_notifications_seconds
+        self._audio_filename = None
         self._recent_notifications: dict = {}
+
+    def set_audio_filename(self, filename: str):
+        self._audio_filename = filename
 
     def notify(self, callsign: str, title: str, message: str):
         show_notification = False
@@ -113,7 +114,7 @@ class Notifications:
             show_notification = True
 
         # Have we seen it, but at least self._time_between_seconds ago?
-        elif time.time() > self._recent_notifications[callsign]+self.time_between_notifications_seconds:
+        elif time.time() > self._recent_notifications[callsign]+self._time_between_notifications_seconds:
             show_notification = True
 
         if show_notification:
@@ -133,90 +134,133 @@ class Notifications:
 
     def _play_audio(self):
         try:
-            subprocess.run(["paplay", self.audio_filename])
+            subprocess.run(["paplay", self._audio_filename])
         except Exception as e:
-            logger.error(f"Unable to play audio file {self.audio_filename}: {e}")
+            logger.error(f"Unable to play audio file {self._audio_filename}: {e}")
 
 
+class WsjtxUdpListenerThread:
+    def __init__(self, host: str = "127.0.0.1", port: int = 2237):
+        self._addr = (host, port)
+        self._callback = None
+        self._thread = None
+        self._stop_event = threading.Event()
 
-def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callback: Callable[[WsjtxUdpMessageDecode], None]):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1.0)
-    sock.bind(addr)
+    def set_callback(self, callback: Callable[[WsjtxUdpMessageDecode], None]):
+        self._callback = callback
 
-    logger.info(f"Listening to WSJTx messages via UDP on {addr[0]}:{addr[1]}")
+    def start(self):
+        self._thread = threading.Thread(target=self._thread_entry)
+        self._thread.start()
 
-    while not stop_event.is_set():
-        try:
-            data, addr = sock.recvfrom(1024)
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
 
+    def _thread_entry(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1.0)
+        sock.bind(self._addr)
+
+        logger.info(f"Listening to WSJTx messages via UDP on {self._addr[0]}:{self._addr[1]}")
+
+        while not self._stop_event.is_set():
             try:
-                message_parser = WsjtxUdpMessageParser(data)
-                message = message_parser.parse()
-                if message is not None:
-                    callback(message)
-            except WsjtxUdpMessageParserException as e:
-                logger.warning(f"Error parsing or processing WSJTx data: {e}")
+                data,_ = sock.recvfrom(1024)
 
-        except socket.timeout:
-            continue
+                try:
+                    message_parser = WsjtxUdpMessageParser(data)
+                    message = message_parser.parse()
+                    if message is not None:
+                        self._callback(message)
+                except WsjtxUdpMessageParserException as e:
+                    logger.warning(f"Error parsing or processing WSJTx data: {e}")
 
-    sock.close()
+            except socket.timeout:
+                continue
 
-
-def pota_activator_updator(stop_event: threading.Event, callback: Callable, refresh_timer_minutes: int = 5 ):
-    logger.info(f"Checking for updates from {POTA_ACTIVATOR_URL} every {refresh_timer_minutes} minutes")
-
-    while not stop_event.is_set():
-        try:
-            logger.info(f"Fetching url from {POTA_ACTIVATOR_URL}")
-            with urllib.request.urlopen(POTA_ACTIVATOR_URL, timeout=POTA_ACTIVATOR_URL_TIMEOUT) as response:
-                content = response.read().decode('utf-8')
-                callback(json.loads(content))
-        except Exception as e:
-            logger.warning(f"Error fetching URL: {e}")
-
-        # wait x-minutes checking to see if thread should exit every second
-        waiting = refresh_timer_minutes * 60
-        while waiting > 0:
-            time.sleep(1)
-            waiting -= 1
-            if stop_event.is_set():
-                break
+        sock.close()
 
 
-notifications = Notifications()
-CURRENT_ACTIVATOR_CALLSIGNS = []
+class PotaActivatorRefresherThread:
+    def __init__(self, spot_url: str, update_frequency_min: int = 5, url_fetch_timeout_sec: int = 5):
+        self._spot_url = spot_url
+        self._update_frequency_min = update_frequency_min
+        self._url_fetch_timeout_sec = url_fetch_timeout_sec
+        self._json_data = None
+        self._callback = None
+        self._thread = None
+        self._stop_event = threading.Event()
 
-def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
-    global CURRENT_ACTIVATOR_CALLSIGNS
+    def set_callback(self, callback: Callable[[dict], None]):
+        self._callback = callback
 
-    for callsign in CURRENT_ACTIVATOR_CALLSIGNS:
-        if callsign in msg.message:  # i.e.  "VK3ARD" in "CQ POTA VK3ARD"
-            notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+    def start(self):
+        self._thread = threading.Thread(target=self._thread_entry)
+        self._thread.start()
 
-    if 'CQ POTA' in msg.message or 'CQ WWFF' in msg.message:
-        callsign = msg.message[8:]
-        notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
 
+    def get_last_response(self):
+        return self._json_data
 
-def on_new_pota_activators(data):
-    global CURRENT_ACTIVATOR_CALLSIGNS
-    logger.info(f"Fetched {len(data)} current active pota activators")
+    def _thread_entry(self):
+        logger.info(f"Checking for updates from {self._spot_url} (every {self._update_frequency_min} minutes)")
 
-    CURRENT_ACTIVATOR_CALLSIGNS = []
+        while not self._stop_event.is_set():
+            try:
+                logger.info(f"Fetching lastest spots from {self._spot_url}")
+                with urllib.request.urlopen(self._spot_url, timeout=self._url_fetch_timeout_sec) as response:
+                    content = response.read().decode('utf-8')
+                    self._json_data = json.loads(content)
+                    self._callback(self._json_data)
+            except Exception as e:
+                logger.warning(f"Error fetching URL: {e}")
 
-    for item in data:
-        CURRENT_ACTIVATOR_CALLSIGNS.append(item["activator"])
+            # wait x-minutes checking to see if thread should exit every second
+            waiting = self._update_frequency_min * 60
+            while waiting > 0:
+                time.sleep(1)
+                waiting -= 1
+                if self._stop_event.is_set():
+                    break
 
 
 if __name__ == "__main__":
-    wsjtx_stop_signal = threading.Event()
-    wsjtx_thread = threading.Thread(target=wsjtx_udp_listener, args=(("127.0.0.1", 2237), wsjtx_stop_signal, on_wsjtx_message_received))
-    wsjtx_thread.start()
 
-    pota_stop_signal = threading.Event()
-    pota_thread = threading.Thread(target=pota_activator_updator, args=(pota_stop_signal, on_new_pota_activators))
+    notifications = UserNotifications()
+    notifications.set_audio_filename('/usr/share/sounds/freedesktop/stereo/message-new-instant.oga')
+
+    wsjtx_thread = WsjtxUdpListenerThread()
+    pota_thread  = PotaActivatorRefresherThread("https://api.pota.app/spot/activator", 5, 10)
+
+
+    def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
+        if pota_thread.get_last_response() is None:
+            return
+
+        # just the callsigns for now
+        activator_callsigns = [item["activator"] for item in pota_thread.get_last_response()]
+
+        for callsign in activator_callsigns:
+            if callsign in msg.message:  # i.e.  "VK3ARD" in "CQ POTA VK3ARD"
+                notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+
+        if 'CQ POTA' in msg.message or 'CQ WWFF' in msg.message:
+            callsign = msg.message[8:]
+            notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+
+
+    def on_new_pota_activators(data):
+        logger.info(f"Fetched {len(data)} current active pota activators")
+
+
+    wsjtx_thread.set_callback(on_wsjtx_message_received)
+    pota_thread.set_callback(on_new_pota_activators)
+
+    wsjtx_thread.start()
     pota_thread.start()
 
     running = True
@@ -225,10 +269,6 @@ if __name__ == "__main__":
             time.sleep(1)
         except KeyboardInterrupt:
             logger.info("Quiting...")
+            wsjtx_thread.stop()
+            pota_thread.stop()
             running = False
-            wsjtx_stop_signal.set()
-            wsjtx_thread.join()
-
-            pota_stop_signal.set()
-            pota_thread.join()
-            logger.info("Bye!")
