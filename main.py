@@ -57,7 +57,7 @@ class WsjtxUdpMessageParser:
         return struct.unpack(">d", self._take(8))[0]
 
     def _parse_utf8(self) -> str:
-        string_length = self._parse_uint32()
+        string_length = self._parse_uint32()  # uint32 before the string gives us the number of bytes to read
         raw_string = self._take(string_length)
         return raw_string.decode("utf-8")
 
@@ -77,7 +77,7 @@ class WsjtxUdpMessageParser:
 
         message_type = self._parse_uint32()
 
-        if message_type != 2:  # Decode message
+        if message_type != 2:  # We only care about 2, the decode message.
             return None
 
         try:
@@ -85,7 +85,7 @@ class WsjtxUdpMessageParser:
             msg.id = self._parse_utf8()
             msg.is_new = self._parse_bool()
             msg.timestamp = self._parse_uint32()
-            msg.snr = self._parse_int32()
+            msg.snr = self._parse_int32()  # <-- Note: *not* unsigned!
             msg.delta_time = self._parse_float64()
             msg.delta_frequency = self._parse_uint32()
             msg.mode = self._parse_utf8()
