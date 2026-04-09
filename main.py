@@ -18,6 +18,10 @@ logger_handler.setFormatter(logging.Formatter('%(asctime)s  %(levelname)s  %(mes
 logger.addHandler(logger_handler)
 
 
+POTA_ACTIVATOR_URL = 'https://api.pota.app/spot/activator'
+POTA_ACTIVATOR_URL_TIMEOUT = 5 # seconds
+
+
 @dataclasses.dataclass
 class WsjtxUdpMessageDecode:
     id: str = ""
@@ -160,16 +164,13 @@ def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callb
     sock.close()
 
 
-
 def pota_activator_updator(stop_event: threading.Event, callback: Callable, refresh_timer_minutes: int = 5 ):
-    url = "https://api.pota.app/spot/activator"
-
-    logger.info(f"Checking for updates from {url} every {refresh_timer_minutes} minutes")
+    logger.info(f"Checking for updates from {POTA_ACTIVATOR_URL} every {refresh_timer_minutes} minutes")
 
     while not stop_event.is_set():
         try:
-            logger.info(f"Fetching url from {url}")
-            with urllib.request.urlopen(url, timeout=5) as response:
+            logger.info(f"Fetching url from {POTA_ACTIVATOR_URL}")
+            with urllib.request.urlopen(POTA_ACTIVATOR_URL, timeout=POTA_ACTIVATOR_URL_TIMEOUT) as response:
                 content = response.read().decode('utf-8')
                 callback(json.loads(content))
         except Exception as e:
