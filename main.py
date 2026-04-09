@@ -95,6 +95,46 @@ class WsjtxUdpMessageParser:
             raise WsjtxUdpMessageParserException(f"Unable to parse valid message: {e}")
 
 
+class Notifications:
+    def __init__(self):
+        self.time_between_notifications_seconds: int = 180
+        self.audio_filename = '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'
+        self._recent_notifications: dict = {}
+
+    def notify(self, callsign: str, title: str, message: str):
+        show_notification = False
+
+        # Has it a new callsign?
+        if callsign not in self._recent_notifications:
+            show_notification = True
+
+        # Have we seen it, but at least self._time_between_seconds ago?
+        elif time.time() > self._recent_notifications[callsign]+self.time_between_notifications_seconds:
+            show_notification = True
+
+        if show_notification:
+            logger.info(f"Found POTA activator: {callsign}")
+            self._recent_notifications[callsign] = time.time()  # reset/set time
+            self._show_toast_notification(title, message)
+            self._play_audio()
+        else:
+            logger.debug(f"Found POTA activator, but suppressing alert: {callsign}")
+
+    @staticmethod
+    def _show_toast_notification(message: str, body: str):
+        try:
+            subprocess.run(["notify-send", message, body])
+        except Exception as e:
+            logger.error(f"Unable to send notification: {e}")
+
+    def _play_audio(self):
+        try:
+            subprocess.run(["paplay", self.audio_filename])
+        except Exception as e:
+            logger.error(f"Unable to play audio file {self.audio_filename}: {e}")
+
+
+
 def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callback: Callable[[WsjtxUdpMessageDecode], None]):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(1.0)
@@ -143,20 +183,8 @@ def pota_activator_updator(stop_event: threading.Event, callback: Callable, refr
             if stop_event.is_set():
                 break
 
-def notify(message: str, body: str):
-    try:
-        subprocess.run(["notify-send", message, body])
-    except Exception as e:
-        logger.error(f"Unable to send notification: {e}")
 
-def play_audio(audio_filename: str):
-    try:
-        subprocess.run(["paplay", audio_filename])
-    except Exception as e:
-        logger.error(f"Unable to play audio file {audio_filename}: {e}")
-
-
-
+notifications = Notifications()
 CURRENT_ACTIVATOR_CALLSIGNS = []
 
 def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
@@ -164,9 +192,11 @@ def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
 
     for callsign in CURRENT_ACTIVATOR_CALLSIGNS:
         if callsign in msg.message:  # i.e.  "VK3ARD" in "CQ POTA VK3ARD"
-            logger.info(f"Found activator callsign: {callsign} in message {msg.message}")
-            play_audio('/usr/share/sounds/freedesktop/stereo/message-new-instant.oga')
-            notify(f"WSJTx {callsign} is POTA", f"Found activator callsign: {callsign} in message {msg.message}")
+            notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+
+    if 'CQ POTA' in msg.message or 'CQ WWFF' in msg.message:
+        callsign = msg.message[8:]
+        notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
 
 
 def on_new_pota_activators(data):
