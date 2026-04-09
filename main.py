@@ -1,33 +1,21 @@
-"""
-import socket
-
-# 1. Create a UDP socket (SOCK_DGRAM)
-# AF_INET is for IPv4, SOCK_DGRAM specifies UDP protocol
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# 2. Bind the socket to the address and port
-# Use '0.0.0.0' or an empty string to listen on all available interfaces
-UDP_IP = "127.0.0.1"
-UDP_PORT = 2237
-sock.bind((UDP_IP, UDP_PORT))
-
-print(f"Listening for UDP packets on {UDP_IP}:{UDP_PORT}...")
-
-while True:
-    # 3. Receive data from the buffer (1024 bytes at a time)
-    # recvfrom returns a tuple: (data, sender_address)
-    data, addr = sock.recvfrom(1024)
-
-    print(f"Received message: {data} from {addr}")
-"""
-
-
 import dataclasses
+import json
 import struct
 import socket
+import sys
 import threading
 import time
+import urllib.request
+import subprocess
+import logging
 from typing import Optional, Callable
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger_handler = logging.StreamHandler(sys.stdout)
+logger_handler.setFormatter(logging.Formatter('%(asctime)s  %(levelname)s  %(message)s', datefmt='%Y-%d-%m %I:%M:%S %p'))
+logger.addHandler(logger_handler)
 
 
 @dataclasses.dataclass
@@ -74,7 +62,7 @@ class WsjtxUdpMessageParser:
     def _parse_bool(self) -> bool:
         return self._take(1) == b"\x01"
 
-    def parse(self):
+    def parse(self) -> Optional[WsjtxUdpMessageDecode]:
         magic_number = self._parse_uint32()
 
         if magic_number != 0xadbccbda:
@@ -87,8 +75,8 @@ class WsjtxUdpMessageParser:
 
         message_type = self._parse_uint32()
 
-        if message_type != 2:
-            raise WsjtxUdpMessageParserException(f"Unsupported message type: {message_type}")
+        if message_type != 2:  # Decode message
+            return None
 
         try:
             msg = WsjtxUdpMessageDecode()
@@ -107,21 +95,12 @@ class WsjtxUdpMessageParser:
             raise WsjtxUdpMessageParserException(f"Unable to parse valid message: {e}")
 
 
-
-
-
-
-
-
-
-
-
 def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callback: Callable[[WsjtxUdpMessageDecode], None]):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(1.0)
     sock.bind(addr)
 
-    print(f"Listening for UDP packets on {addr[0]}:{addr[1]}")
+    logger.info(f"Listening to WSJTx messages via UDP on {addr[0]}:{addr[1]}")
 
     while not stop_event.is_set():
         try:
@@ -130,9 +109,10 @@ def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callb
             try:
                 message_parser = WsjtxUdpMessageParser(data)
                 message = message_parser.parse()
-                callback(message)
+                if message is not None:
+                    callback(message)
             except WsjtxUdpMessageParserException as e:
-                print(f"Exception: {e}")
+                logger.warning(f"Error parsing or processing WSJTx data: {e}")
 
         except socket.timeout:
             continue
@@ -140,24 +120,84 @@ def wsjtx_udp_listener(addr: tuple[str, int], stop_event: threading.Event, callb
     sock.close()
 
 
-def message_received(msg: WsjtxUdpMessageDecode) -> None:
-    print(msg)
+
+def pota_activator_updator(stop_event: threading.Event, callback: Callable, refresh_timer_minutes: int = 5 ):
+    url = "https://api.pota.app/spot/activator"
+
+    logger.info(f"Checking for updates from {url} every {refresh_timer_minutes} minutes")
+
+    while not stop_event.is_set():
+        try:
+            logger.info(f"Fetching url from {url}")
+            with urllib.request.urlopen(url, timeout=5) as response:
+                content = response.read().decode('utf-8')
+                callback(json.loads(content))
+        except Exception as e:
+            logger.warning(f"Error fetching URL: {e}")
+
+        # wait x-minutes checking to see if thread should exit every second
+        waiting = refresh_timer_minutes * 60
+        while waiting > 0:
+            time.sleep(1)
+            waiting -= 1
+            if stop_event.is_set():
+                break
+
+def notify(message: str, body: str):
+    try:
+        subprocess.run(["notify-send", message, body])
+    except Exception as e:
+        logger.error(f"Unable to send notification: {e}")
+
+def play_audio(audio_filename: str):
+    try:
+        subprocess.run(["paplay", audio_filename])
+    except Exception as e:
+        logger.error(f"Unable to play audio file {audio_filename}: {e}")
 
 
+
+CURRENT_ACTIVATOR_CALLSIGNS = []
+
+def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
+    global CURRENT_ACTIVATOR_CALLSIGNS
+
+    for callsign in CURRENT_ACTIVATOR_CALLSIGNS:
+        if callsign in msg.message:  # i.e.  "VK3ARD" in "CQ POTA VK3ARD"
+            logger.info(f"Found activator callsign: {callsign} in message {msg.message}")
+            play_audio('/usr/share/sounds/freedesktop/stereo/message-new-instant.oga')
+            notify(f"WSJTx {callsign} is POTA", f"Found activator callsign: {callsign} in message {msg.message}")
+
+
+def on_new_pota_activators(data):
+    global CURRENT_ACTIVATOR_CALLSIGNS
+    logger.info(f"Fetched {len(data)} current active pota activators")
+
+    CURRENT_ACTIVATOR_CALLSIGNS = []
+
+    for item in data:
+        CURRENT_ACTIVATOR_CALLSIGNS.append(item["activator"])
 
 
 if __name__ == "__main__":
-    stop_signal = threading.Event()
-    listener_thread = threading.Thread(target=wsjtx_udp_listener, args=(("127.0.0.1", 2237), stop_signal, message_received))
-    listener_thread.start()
+    wsjtx_stop_signal = threading.Event()
+    wsjtx_thread = threading.Thread(target=wsjtx_udp_listener, args=(("127.0.0.1", 2237), wsjtx_stop_signal, on_wsjtx_message_received))
+    wsjtx_thread.start()
+
+    pota_stop_signal = threading.Event()
+    pota_thread = threading.Thread(target=pota_activator_updator, args=(pota_stop_signal, on_new_pota_activators))
+    pota_thread.start()
 
     running = True
     while running:
         try:
             time.sleep(1)
         except KeyboardInterrupt:
-            print("Stopping thread")
+            logger.info("Quiting...")
             running = False
-            stop_signal.set()
-            listener_thread.join()
-            print("Done")
+            wsjtx_stop_signal.set()
+            wsjtx_thread.join()
+
+            pota_stop_signal.set()
+            pota_thread.join()
+            logger.info("Bye!")
