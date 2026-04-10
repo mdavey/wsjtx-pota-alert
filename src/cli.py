@@ -3,7 +3,7 @@ import time
 import logging
 
 
-from wsjtx_udp_message_parser import WsjtxUdpMessageParser, WsjtxUdpMessageDecode, WsjtxUdpMessageParserException
+from wsjtx_udp_message_parser import WsjtxUdpMessageDecode
 from pota_activator import PotaActivatorRefresherThread
 from user_notifications import UserNotifications
 from wsjtx_udp_listener import WsjtxUdpListenerThread
@@ -24,7 +24,6 @@ if __name__ == "__main__":
 
     wsjtx_thread = WsjtxUdpListenerThread()
     pota_thread  = PotaActivatorRefresherThread("https://api.pota.app/spot/activator", 5, 10)
-
 
     def on_wsjtx_message_received(msg: WsjtxUdpMessageDecode) -> None:
         if pota_thread.get_last_response() is None:
