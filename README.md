@@ -19,6 +19,14 @@ Because I never checked if GridTrack runs on Linux
 * Linux Desktop for `notify-send`
 * Pulse Audio for `paplay`
 
+## Testing
+
+About time...
+
+```bash
+uv run -m pytest
+```
+
 ## License
 
 MIT

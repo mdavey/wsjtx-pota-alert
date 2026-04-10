@@ -30,16 +30,21 @@ if __name__ == "__main__":
         if pota_thread.get_last_response() is None:
             return
 
+        # If we can't work out the callsign of who set the message, no point going further
+        callsign_of_transmitter = msg.get_src_callsign()
+        if callsign_of_transmitter is None:
+            return
+
         # just the callsigns for now
         activator_callsigns = [item["activator"] for item in pota_thread.get_last_response()]
 
         for callsign in activator_callsigns:
-            if callsign in msg.message:  # i.e.  "VK3ARD" in "CQ POTA VK3ARD"
-                notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+            if callsign == callsign_of_transmitter:
+                notifications.notify(callsign, f"Found Activator {callsign}", msg.message)
 
         if 'CQ POTA' in msg.message or 'CQ WWFF' in msg.message:
             callsign = msg.message[8:]
-            notifications.notify(callsign, "Found POTA via WSJTx", msg.message)
+            notifications.notify(callsign, f"Found Activator {callsign}", msg.message)
 
 
     def on_new_pota_activators(data):
