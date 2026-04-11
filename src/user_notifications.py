@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import time
+from functools import cache
 
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,33 @@ class UserNotifications:
     @staticmethod
     def _show_toast_notification(message: str, body: str):
         try:
-            subprocess.run(["notify-send", message, body])
+            subprocess.run(["notify-send", message, body], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
         except Exception as e:
             logger.error(f"Unable to send notification: {e}")
 
     def _play_audio(self):
         try:
-            subprocess.run(["paplay", self._audio_filename])
+            cmd_and_args = self._get_suitable_audio_player()
+            if cmd_and_args is not None:
+                cmd_and_args.append(self._audio_filename)
+                subprocess.Popen(cmd_and_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+            else:
+                logger.error(f"Unable to find program to play notification.  Please install paplay or ffplay, or vorbis-tools for ogg123")
         except Exception as e:
             logger.error(f"Unable to play audio file {self._audio_filename}: {e}")
+
+    @cache
+    def _get_suitable_audio_player(self):
+        """
+        Try and find a suitable audio player.  Try generic stuff first, and pray.
+        """
+        possible_programs = [
+            {"cmd": "ffplay", "full_cmd":["ffplay", "-vn", "-nodisp", "-autoexit"]},
+            {"cmd": "paplay", "full_cmd":["paplay"]},
+            {"cmd": "ogg123", "full_cmd":["ogg123"]},
+        ]
+        for program in possible_programs:
+            r = subprocess.run(["which", program["cmd"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+            if r.returncode == 0:
+                return program["full_cmd"]
+        return None
