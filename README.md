@@ -2,11 +2,11 @@
 
 Just another silly personal project.  
 
-**Maybe** useful to see a really basic WSJTx UDP decoder.
+**Maybe** useful to see a really basic WSJT-X UDP decoder.
 
 ## What
 
-A python console program that listens for WSJTx decodes (via UDP), checks them against recent POTA spots, and notifies 
+A python console program that listens for WSJT-X decodes (via UDP), checks them against recent POTA spots, and notifies 
 the user if one pops up.
 
 ## Why
@@ -17,7 +17,7 @@ Because I never checked if GridTrack runs on Linux
 
 * Python
 * Linux Desktop for `notify-send`
-* Pulse Audio for `paplay`
+* Some type of audio player (`paplay` / `ffplay`)
 
 ## Testing
 
