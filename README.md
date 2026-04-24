@@ -1,31 +1,42 @@
-# WSJTx POTA Alert
+# WSJT-X POTA Alert
 
-Just another silly personal project.  
-
-**Maybe** useful to see a really basic WSJT-X UDP decoder.
+Just another silly personal project.
 
 ## What
 
-A python console program that listens for WSJT-X decodes (via UDP), checks them against recent POTA spots, and notifies 
-the user if one pops up.
+Python cli program that listens for WSJT-X decodes (via UDP) and checks them against recent POTA spots.  If a callsign
+from WSJT-X matches an activator, plays a sound and spawns a toast notification.
+
+**Maybe** useful to see a really basic WSJT-X UDP decoder.
 
 ## Why
 
-Because I never checked if GridTrack runs on Linux
+Because I never checked if Grid Tracker runs on Linux
 
-## How
+## Requirements
 
 * Python
 * Linux Desktop for `notify-send`
 * Some type of audio player (`paplay` / `ffplay`)
 
-## Testing
+## Running
 
-About time...
+```bash
+git clone [...]
+cd [...]
+uv sync
+uv run src/cli.py
+```
+
+## Testing
 
 ```bash
 uv run -m pytest
 ```
+
+## AI Disclaimer
+
+No AI generated code.  All mistakes and stupid decisions are my own fault.
 
 ## License
 
