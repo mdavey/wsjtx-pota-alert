@@ -65,13 +65,15 @@ class UserNotifications:
         """
         Try and find a suitable audio player.  Try generic stuff first, and pray.
         """
+
         possible_programs = [
-            {"cmd": "ffplay", "full_cmd":["ffplay", "-vn", "-nodisp", "-autoexit"]},
-            {"cmd": "paplay", "full_cmd":["paplay"]},
-            {"cmd": "ogg123", "full_cmd":["ogg123"]},
+            ("ffplay", ["ffplay", "-vn", "-nodisp", "-autoexit"]),
+            ("paplay", ["paplay"]),
+            ("ogg123", ["ogg123"])
         ]
-        for program in possible_programs:
-            r = subprocess.run(["which", program["cmd"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+
+        for (exe_name, full_command) in possible_programs:
+            r = subprocess.run(["which", exe_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
             if r.returncode == 0:
-                return program["full_cmd"]
+                return full_command
         return None
