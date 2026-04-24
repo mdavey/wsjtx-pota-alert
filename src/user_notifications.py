@@ -1,4 +1,5 @@
 import logging
+import os.path
 import subprocess
 import time
 from functools import cache
@@ -14,7 +15,10 @@ class UserNotifications:
         self._recent_notifications: dict = {}
 
     def set_audio_filename(self, filename: str):
-        self._audio_filename = filename
+        if not os.path.exists(filename):
+            logger.error(f"Notification sound not found: {filename}")
+        else:
+            self._audio_filename = filename
 
     def notify(self, callsign: str, title: str, message: str):
         show_notification = False
@@ -43,6 +47,9 @@ class UserNotifications:
             logger.error(f"Unable to send notification: {e}")
 
     def _play_audio(self):
+        if self._audio_filename is None:
+            return
+
         try:
             cmd_and_args = self._get_suitable_audio_player()
             if cmd_and_args is not None:
