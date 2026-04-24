@@ -7,7 +7,9 @@ Just another silly personal project.
 Python cli program that listens for WSJT-X decodes (via UDP) and checks them against recent POTA spots.  If a callsign
 from WSJT-X matches an activator, plays a sound and spawns a toast notification.
 
-**Maybe** useful to see a really basic WSJT-X UDP decoder.
+**Maybe** useful as an example of a really basic WSJT-X UDP decoder.
+
+Otherwise, set your expectations very low.
 
 ## Why
 
@@ -22,8 +24,8 @@ Because I never checked if Grid Tracker runs on Linux
 ## Running
 
 ```bash
-git clone [...]
-cd [...]
+git clone https://github.com/mdavey/wsjtx-pota-alert.git
+cd wsjtx-pota-alert
 uv sync
 uv run src/cli.py
 ```
