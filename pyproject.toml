@@ -1,7 +1,7 @@
 [project]
 name = "wsjtx-pota-alert"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python program that listens for WSJT-X decodes (via UDP) and checks them against recent POTA spots"
 requires-python = ">=3.13"
 dependencies = [
     "pytest>=9.0.3",
