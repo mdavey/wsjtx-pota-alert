@@ -5,4 +5,5 @@ description = "Python program that listens for WSJT-X decodes (via UDP) and chec
 requires-python = ">=3.13"
 dependencies = [
     "pytest>=9.0.3",
+    "dearpygui>=2.2",
 ]
