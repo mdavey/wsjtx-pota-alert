@@ -15,7 +15,8 @@ class UiLogHandler(logging.Handler):
     def emit(self, record):
         log_entry = self.format(record)
         value = dpg.get_value("log_input_text")
-        dpg.set_value("log_input_text", value + log_entry + "\n")
+        new_value = log_entry + "\n" + value
+        dpg.set_value("log_input_text", new_value)
 
 
 logger = logging.getLogger() # root
@@ -104,7 +105,7 @@ with dpg.window(tag="Primary Window"):
     dpg.bind_item_font(dpg.last_item(), heading_font)
     dpg.bind_item_theme(dpg.last_item(), text_heading_theme)
 
-    dpg.add_input_text(multiline=True, height=200, enabled=False, width=780, tracked=True, tag="log_input_text")
+    dpg.add_input_text(multiline=True, height=240, readonly=True, width=780, tag="log_input_text")
 
 
 pota_thread = PotaActivatorRefresherThread("https://api.pota.app/spot/activator", 5, 10)
