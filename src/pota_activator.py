@@ -50,7 +50,7 @@ class PotaActivatorRefresherThread:
             # wait x-minutes checking to see if thread should exit every second
             waiting = self._update_frequency_min * 60
             while waiting > 0:
-                time.sleep(1)
+                time.sleep(0.100)
                 waiting -= 1
                 if self._stop_event.is_set():
                     break

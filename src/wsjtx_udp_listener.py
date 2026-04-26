@@ -29,7 +29,7 @@ class WsjtxUdpListenerThread:
 
     def _thread_entry(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.0)
+        sock.settimeout(0.100)
         sock.bind(self._addr)
 
         logger.info(f"Listening to WSJTx messages via UDP on {self._addr[0]}:{self._addr[1]}")
