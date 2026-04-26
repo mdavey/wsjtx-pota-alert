@@ -48,7 +48,7 @@ class PotaActivatorRefresherThread:
                 logger.warning(f"Error fetching URL: {e}")
 
             # wait x-minutes checking to see if thread should exit every second
-            waiting = self._update_frequency_min * 60
+            waiting = self._update_frequency_min * 600
             while waiting > 0:
                 time.sleep(0.100)
                 waiting -= 1
