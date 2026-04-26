@@ -19,7 +19,7 @@ logger.addHandler(logger_handler)
 if __name__ == "__main__":
 
     notifications = UserNotifications()
-    notifications.set_audio_filename('/usr/share/sounds/freedesktop/stereo/message-new-instant.oga')
+    notifications.set_audio_filename('../assets/message-new-instant.oga')
 
     wsjtx_thread = WsjtxUdpListenerThread()
     pota_thread  = PotaActivatorRefresherThread("https://api.pota.app/spot/activator", 5, 10)
