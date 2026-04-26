@@ -67,9 +67,9 @@ class UserNotifications:
         """
 
         possible_programs = [
-            ("ffplay", ["ffplay", "-vn", "-nodisp", "-autoexit"]),
-            ("paplay", ["paplay"]),
-            ("ogg123", ["ogg123"])
+            ("ffplay", ["ffplay", "-vn", "-nodisp", "-autoexit", "-volume", "50"]),
+            ("paplay", ["paplay", "--volume", str(65536/2)]),  # 65536/2 is of course 50% volume
+            ("ogg123", ["ogg123"]) # no volume command line options
         ]
 
         for (exe_name, full_command) in possible_programs:
